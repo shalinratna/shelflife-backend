@@ -139,47 +139,109 @@ async function initializeDatabase() {
     console.log('🔧 Initializing database tables...');
 
     if (NODE_ENV === 'production') {
-        // PostgreSQL table creation
-        const createTables = [
-            `CREATE TABLE IF NOT EXISTS users (
-                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-                name VARCHAR(255) NOT NULL,
-                email VARCHAR(255) UNIQUE NOT NULL,
-                password_hash VARCHAR(255) NOT NULL,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )`,
-            `CREATE TABLE IF NOT EXISTS food_items (
-                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-                user_id UUID REFERENCES users(id) ON DELETE CASCADE,
-                name VARCHAR(255) NOT NULL,
-                category VARCHAR(100) NOT NULL,
-                quantity INTEGER NOT NULL DEFAULT 1,
-                unit VARCHAR(50) NOT NULL DEFAULT 'pieces',
-                purchase_date DATE,
-                expiry_date DATE,
-                auto_calculated BOOLEAN DEFAULT false,
-                storage_location VARCHAR(100) DEFAULT 'refrigerator',
-                barcode VARCHAR(255),
-                image_url TEXT,
-                nutritional_info JSONB,
-                recipe_suggestions JSONB,
-                status VARCHAR(50) DEFAULT 'fresh',
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )`,
-            `CREATE TABLE IF NOT EXISTS notifications (
-                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-                user_id UUID REFERENCES users(id) ON DELETE CASCADE,
-                food_item_id UUID REFERENCES food_items(id) ON DELETE CASCADE,
-                type VARCHAR(50) NOT NULL,
-                message TEXT NOT NULL,
-                sent_at TIMESTAMP,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )`
-        ];
+        try {
+            // Try PostgreSQL first
+            const createTables = [
+                `CREATE TABLE IF NOT EXISTS users (
+                    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                    name VARCHAR(255) NOT NULL,
+                    email VARCHAR(255) UNIQUE NOT NULL,
+                    password_hash VARCHAR(255) NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )`,
+                `CREATE TABLE IF NOT EXISTS food_items (
+                    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+                    name VARCHAR(255) NOT NULL,
+                    category VARCHAR(100) NOT NULL,
+                    quantity INTEGER NOT NULL DEFAULT 1,
+                    unit VARCHAR(50) NOT NULL DEFAULT 'pieces',
+                    purchase_date DATE,
+                    expiry_date DATE,
+                    auto_calculated BOOLEAN DEFAULT false,
+                    storage_location VARCHAR(100) DEFAULT 'refrigerator',
+                    barcode VARCHAR(255),
+                    image_url TEXT,
+                    nutritional_info JSONB,
+                    recipe_suggestions JSONB,
+                    status VARCHAR(50) DEFAULT 'fresh',
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )`,
+                `CREATE TABLE IF NOT EXISTS notifications (
+                    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+                    food_item_id UUID REFERENCES food_items(id) ON DELETE CASCADE,
+                    type VARCHAR(50) NOT NULL,
+                    message TEXT NOT NULL,
+                    sent_at TIMESTAMP,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )`
+            ];
 
-        for (const query of createTables) {
-            await db.query(query);
+            for (const query of createTables) {
+                await db.query(query);
+            }
+            console.log('✅ PostgreSQL database initialized successfully');
+        } catch (error) {
+            console.log('⚠️  PostgreSQL connection failed, falling back to SQLite');
+            console.log('📁 Using SQLite database for production fallback');
+
+            // Initialize SQLite as fallback
+            const Database = require('sqlite3').Database;
+            db = new Database('./data/shelflife.db');
+
+            // Use SQLite table creation
+            const createTables = [
+                `CREATE TABLE IF NOT EXISTS users (
+                    id TEXT PRIMARY KEY,
+                    name TEXT NOT NULL,
+                    email TEXT UNIQUE NOT NULL,
+                    password_hash TEXT NOT NULL,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                )`,
+                `CREATE TABLE IF NOT EXISTS food_items (
+                    id TEXT PRIMARY KEY,
+                    user_id TEXT NOT NULL,
+                    name TEXT NOT NULL,
+                    category TEXT NOT NULL,
+                    quantity INTEGER NOT NULL DEFAULT 1,
+                    unit TEXT NOT NULL DEFAULT 'pieces',
+                    purchase_date DATE,
+                    expiry_date DATE,
+                    auto_calculated BOOLEAN DEFAULT 0,
+                    storage_location TEXT DEFAULT 'refrigerator',
+                    barcode TEXT,
+                    image_url TEXT,
+                    nutritional_info TEXT,
+                    recipe_suggestions TEXT,
+                    status TEXT DEFAULT 'fresh',
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (user_id) REFERENCES users (id)
+                )`,
+                `CREATE TABLE IF NOT EXISTS notifications (
+                    id TEXT PRIMARY KEY,
+                    user_id TEXT NOT NULL,
+                    food_item_id TEXT NOT NULL,
+                    type TEXT NOT NULL,
+                    message TEXT NOT NULL,
+                    sent_at DATETIME,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (user_id) REFERENCES users (id),
+                    FOREIGN KEY (food_item_id) REFERENCES food_items (id)
+                )`
+            ];
+
+            for (const query of createTables) {
+                await new Promise((resolve, reject) => {
+                    db.run(query, (err) => {
+                        if (err) reject(err);
+                        else resolve();
+                    });
+                });
+            }
+            console.log('✅ SQLite database initialized successfully');
         }
     } else {
         // SQLite table creation
